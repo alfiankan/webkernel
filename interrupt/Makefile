@@ -11,7 +11,7 @@ kernel.elf: kernel.S linker.ld
 	$(CC) $(CFLAGS) $(LDFLAGS) kernel.S -o kernel.elf
 
 run: kernel.elf
-	qemu-system-riscv64 -M virt -cpu rv64 -nographic -kernel kernel.elf
+	qemu-system-riscv64 -M virt -cpu rv64 -nographic -bios none -kernel kernel.elf
 
 clean:
 	rm -f kernel.elf
