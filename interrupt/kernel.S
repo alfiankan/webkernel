@@ -4,6 +4,17 @@
 .equ UART_LSR, 5
 .equ LSR_TX_EMPTY, 0x20
 
+.equ PLIC_BASE, 0x0c000000
+.equ PLIC_PRIORITY_UART, (PLIC_BASE + 10*4)
+.equ PLIC_PENDING, (PLIC_BASE + 0x1000)
+.equ PLIC_ENABLE, (PLIC_BASE + 0x2000)
+.equ PLIC_THRESHOLD, (PLIC_BASE + 0x200000)
+.equ PLIC_CLAIM, (PLIC_BASE + 0x200004)
+
+.equ UART_IER, 1
+.equ UART_RBR, 0
+.equ UART_LSR_RX_READY, 0x01
+
 .section .text
 .global _start
 
@@ -105,6 +116,34 @@ trap_vector:
     mret
 
 handle_trap:
+    addi sp, sp, -16
+    sd ra, 0(sp)
+
+    csrr t0, mcause
+    li t1, 0x800000000000000b # Machine external interrupt
+    bne t0, t1, 2f
+
+    # Claim interrupt
+    li t0, PLIC_CLAIM
+    lw t1, 0(t0)
+
+    # Check if from UART (IRQ 10)
+    li t2, 10
+    bne t1, t2, 1f
+
+    # Echo character
+    li t3, UART0
+    lbu a0, UART_RBR(t3)
+    call uart_putc
+
+1:
+    # Complete interrupt
+    li t0, PLIC_CLAIM
+    sw t1, 0(t0)
+
+2:
+    ld ra, 0(sp)
+    addi sp, sp, 16
     ret
 
 print_string:
@@ -125,8 +164,36 @@ print_string:
     ret
 
 kmain:
+    # Init UART interrupts
+    li t0, UART0
+    li t1, 1
+    sb t1, UART_IER(t0)
+
+    # Init PLIC
+    li t0, PLIC_PRIORITY_UART
+    li t1, 1
+    sw t1, 0(t0)
+
+    li t0, PLIC_ENABLE
+    li t1, (1 << 10)
+    sw t1, 0(t0)
+
+    li t0, PLIC_THRESHOLD
+    sw zero, 0(t0)
+
+    # Set trap vector
+    la t0, trap_vector
+    csrw mtvec, t0
+
+    # Enable interrupts
+    li t0, 0x800 # MEIE bit in mie
+    csrs mie, t0
+    li t0, 0x8   # MIE bit in mstatus
+    csrs mstatus, t0
+
     la a0, hello_msg
     call print_string
+
 1:
     wfi
     j 1b
