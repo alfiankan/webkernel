@@ -164,20 +164,26 @@ print_string:
     ret
 
 kmain:
-    # Init UART interrupts
+    # Init UART: Set 8N1, enable FIFO, and enable Receiver Data Available interrupt
     li t0, UART0
-    li t1, 1
-    sb t1, UART_IER(t0)
+    li t1, 3        # 8N1
+    sb t1, 3(t0)    # LCR
+    li t1, 1        # Enable FIFO
+    sb t1, 2(t0)    # FCR
+    li t1, 1        # Enable RDA interrupt
+    sb t1, 1(t0)    # IER
 
     # Init PLIC
     li t0, PLIC_PRIORITY_UART
     li t1, 1
     sw t1, 0(t0)
 
+    # Enable IRQ 10 (UART) for Hart 0 M-mode
     li t0, PLIC_ENABLE
     li t1, (1 << 10)
     sw t1, 0(t0)
 
+    # Set threshold to 0 to accept all interrupts
     li t0, PLIC_THRESHOLD
     sw zero, 0(t0)
 
@@ -185,19 +191,24 @@ kmain:
     la t0, trap_vector
     csrw mtvec, t0
 
-    # Enable interrupts
-    li t0, 0x800 # MEIE bit in mie
+    # Enable Machine External Interrupts
+    li t0, 0x800 # MEIE
     csrs mie, t0
-    li t0, 0x8   # MIE bit in mstatus
+    # Enable global interrupts
+    li t0, 0x8   # MIE
     csrs mstatus, t0
 
     la a0, hello_msg
     call print_string
 
-1:
-    wfi
-    j 1b
+loop:
+    wfi             # Wait for interrupt
+    la a0, ok_msg   # After interrupt returns, print OK
+    call print_string
+    j loop
 
 .section .rodata
 hello_msg:
     .string "Hello, RISC-V Assembly World!\n"
+ok_msg:
+    .string " [OK]\n"
