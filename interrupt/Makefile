@@ -1,7 +1,8 @@
-CC = riscv64-unknown-elf-gcc
-AS = riscv64-unknown-elf-as
-LD = riscv64-unknown-elf-ld
-OBJCOPY = riscv64-unknown-elf-objcopy
+CROSS_COMPILE ?= riscv64-unknown-elf-
+CC = $(CROSS_COMPILE)gcc
+AS = $(CROSS_COMPILE)as
+LD = $(CROSS_COMPILE)ld
+OBJCOPY = $(CROSS_COMPILE)objcopy
 
 CFLAGS = -Wall -Wextra -mcmodel=medany -ffreestanding -nostdlib -mabi=lp64 -march=rv64imafdc
 LDFLAGS = -T linker.ld
@@ -14,3 +15,9 @@ run: kernel.elf
 
 clean:
 	rm -f kernel.elf
+
+help:
+	@echo "Usage:"
+	@echo "  make                - Build the kernel"
+	@echo "  make run            - Run the kernel in QEMU"
+	@echo "  make CROSS_COMPILE=riscv64-linux-gnu-  - Build using a different toolchain prefix"
