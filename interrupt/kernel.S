@@ -119,29 +119,36 @@ handle_trap:
     addi sp, sp, -16
     sd ra, 0(sp)
 
-    csrr t0, mcause
-    li t1, 0x800000000000000b # Machine external interrupt
-    bne t0, t1, 2f
-
-    # Claim interrupt
+plic_loop:
+    # Claim interrupt from PLIC
     li t0, PLIC_CLAIM
     lw t1, 0(t0)
+    
+    # If claim is 0, no more pending interrupts
+    beqz t1, plic_done
 
-    # Check if from UART (IRQ 10)
+    # Check if the source is UART (IRQ 10)
     li t2, 10
-    bne t1, t2, 1f
+    bne t1, t2, plic_complete
 
-    # Echo character
+    # Drain UART FIFO and echo characters
     li t3, UART0
+uart_drain_loop:
+    lbu t4, UART_LSR(t3)
+    andi t4, t4, UART_LSR_RX_READY
+    beqz t4, plic_complete
+    
     lbu a0, UART_RBR(t3)
     call uart_putc
+    j uart_drain_loop
 
-1:
-    # Complete interrupt
+plic_complete:
+    # Signal completion to PLIC
     li t0, PLIC_CLAIM
     sw t1, 0(t0)
+    j plic_loop
 
-2:
+plic_done:
     ld ra, 0(sp)
     addi sp, sp, 16
     ret
