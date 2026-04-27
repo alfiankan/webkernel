@@ -1,0 +1,6 @@
+[package.metadata.wasm]
+profile = "release"
+
+[tool.cargo-generate]
+# Template for generating new WASM projects
+ignore = [".git", ".gitignore", "target", "dist", "node_modules"]

@@ -1,0 +1,14 @@
+target/
+dist/
+pkg/
+node_modules/
+*.wasm
+.DS_Store
+*.log
+.env
+.env.local
+
+
+# Added by cargo
+
+/target
