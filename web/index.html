@@ -68,6 +68,7 @@
         <button id="btnPauseResume" class="ui-btn">Pause</button>
         <button id="btnReset" class="ui-btn">Reset</button>
         <button id="btnMute" class="ui-btn">Mute</button>
+        <button id="btnDebugger" class="ui-btn">Debugger</button>
       </div>
 
       <div class="panel-row">
@@ -92,6 +93,62 @@
     </div>
   </div>
 
+  <section class="debugger" id="debugger" hidden>
+    <div class="debugger-head">
+      <h2>Debugger</h2>
+      <div class="debugger-toolbar">
+        <button id="dbgStep" class="ui-btn small">Step instruction</button>
+        <button id="dbgStepFrame" class="ui-btn small">Step frame</button>
+        <span class="dbg-hint">Pause the emulator to step through code.</span>
+      </div>
+    </div>
+
+    <div class="debug-grid">
+      <div class="debug-card">
+        <h3>CPU</h3>
+        <div class="reg-grid" id="regGrid"></div>
+        <div class="flag-row" id="flagRow"></div>
+        <div class="cpu-misc" id="cpuMisc"></div>
+      </div>
+
+      <div class="debug-card">
+        <h3>Disassembly</h3>
+        <pre class="disasm" id="disasmView"></pre>
+      </div>
+
+      <div class="debug-card">
+        <h3>Cartridge</h3>
+        <div class="cart-grid" id="cartInfo"></div>
+      </div>
+
+      <div class="debug-card">
+        <h3>VRAM tiles</h3>
+        <canvas id="tileView" width="256" height="384" class="tile-canvas"></canvas>
+        <p class="hint">384 tiles from $8000&ndash;$97FF, 16 per row.</p>
+      </div>
+
+      <div class="debug-card wide">
+        <h3>Memory</h3>
+        <div class="mem-toolbar">
+          <select id="memRegion">
+            <option value="wram">WRAM ($C000)</option>
+            <option value="vram">VRAM ($8000)</option>
+            <option value="oam">OAM ($FE00)</option>
+            <option value="hram">HRAM ($FF80)</option>
+            <option value="rom">ROM ($0000)</option>
+          </select>
+          <button id="memPrev" class="ui-btn small">&larr; Prev</button>
+          <button id="memNext" class="ui-btn small">Next &rarr;</button>
+          <label class="mem-goto">Go to
+            <input type="text" id="memGoto" placeholder="e.g. C0A0" />
+          </label>
+        </div>
+        <pre class="hexdump" id="hexdumpView"></pre>
+      </div>
+    </div>
+  </section>
+
+  <script src="disasm.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

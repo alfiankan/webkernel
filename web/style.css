@@ -440,3 +440,246 @@ html, body {
     color: #23232b;
   }
 }
+
+/* ---------------- Debugger ---------------- */
+
+.debugger {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem 3rem;
+}
+
+.debugger[hidden] {
+  display: none;
+}
+
+.debugger-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+.debugger-head h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+}
+
+.debugger-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.dbg-hint {
+  font-size: 0.75rem;
+  color: #8f8dab;
+}
+
+.ui-btn.small {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.debug-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 0.9rem 1rem 1.1rem;
+  min-width: 0;
+}
+
+.debug-card.wide {
+  grid-column: 1 / -1;
+}
+
+.debug-card h3 {
+  margin: 0 0 0.7rem;
+  font-size: 0.82rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #b0aec4;
+}
+
+/* Registers */
+
+.reg-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.4rem 0.5rem;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  margin-bottom: 0.75rem;
+}
+
+.reg-cell {
+  background: #1b1d27;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+  text-align: center;
+}
+
+.reg-cell .reg-name {
+  display: block;
+  font-size: 0.62rem;
+  color: #8f8dab;
+  letter-spacing: 0.06em;
+}
+
+.reg-cell .reg-value {
+  display: block;
+  color: #d3d1e0;
+  font-variant-numeric: tabular-nums;
+}
+
+.flag-row {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.flag-pill {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+  color: #6b6980;
+  background: #1b1d27;
+}
+
+.flag-pill.set {
+  color: #eef4e0;
+  background: #3a6b4a;
+  border-color: #4d8a63;
+}
+
+.cpu-misc {
+  font-size: 0.78rem;
+  color: #b0aec4;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-family: "SFMono-Regular", Consolas, monospace;
+}
+
+/* Disassembly */
+
+.disasm {
+  margin: 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  max-height: 260px;
+  overflow-y: auto;
+  white-space: pre;
+  color: #cfcde0;
+}
+
+.disasm .cur {
+  background: #3a6b4a;
+  color: #eef4e0;
+  display: inline-block;
+  width: 100%;
+}
+
+/* Cartridge info */
+
+.cart-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+}
+
+.cart-grid dt {
+  color: #8f8dab;
+  grid-column: 1;
+}
+.cart-grid dd {
+  margin: 0;
+  grid-column: 2;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  color: #d3d1e0;
+  word-break: break-word;
+}
+
+/* Tile viewer */
+
+.tile-canvas {
+  width: 100%;
+  max-width: 256px;
+  height: auto;
+  image-rendering: pixelated;
+  background: #0d0e13;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  display: block;
+}
+
+/* Memory viewer */
+
+.mem-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.mem-toolbar select {
+  background: #1b1d27;
+  color: var(--page-fg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.mem-goto {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #8f8dab;
+  margin-left: auto;
+}
+
+.mem-goto input {
+  width: 6ch;
+  background: #1b1d27;
+  color: var(--page-fg);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 0.3rem 0.4rem;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  text-transform: uppercase;
+}
+
+.hexdump {
+  margin: 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  overflow-x: auto;
+  color: #cfcde0;
+}
+
+@media (max-width: 720px) {
+  .debug-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -34,6 +34,21 @@ impl GameBoy {
             self.mmu.tick_components(cycles);
             total += cycles;
         }
+        unsafe {
+            TOTAL_CYCLES += total as u64;
+        }
+    }
+
+    /// Executes exactly one CPU instruction (or one HALT-idle tick) and
+    /// advances every other subsystem by the same number of cycles. Used by
+    /// the debugger's single-step control.
+    fn step_instruction(&mut self) -> u32 {
+        let cycles = self.cpu.step(&mut self.mmu);
+        self.mmu.tick_components(cycles);
+        unsafe {
+            TOTAL_CYCLES += cycles as u64;
+        }
+        cycles
     }
 }
 
@@ -56,6 +71,7 @@ pub extern "C" fn load_rom(len: usize) {
     unsafe {
         let rom = ROM_BUF[..len].to_vec();
         GB = Some(GameBoy::new(rom));
+        TOTAL_CYCLES = 0;
     }
 }
 
@@ -139,6 +155,7 @@ pub extern "C" fn reset() {
     unsafe {
         if !ROM_BUF.is_empty() {
             GB = Some(GameBoy::new(ROM_BUF.clone()));
+            TOTAL_CYCLES = 0;
         }
     }
 }
@@ -166,6 +183,132 @@ pub extern "C" fn debug_pc() -> u16 {
 #[no_mangle]
 pub extern "C" fn is_loaded() -> u32 {
     unsafe { if GB.is_some() { 1 } else { 0 } }
+}
+
+/// Runs exactly one CPU instruction (debugger single-step) and returns the
+/// T-cycles it took, or 0 if nothing is loaded.
+#[no_mangle]
+pub extern "C" fn step_instruction() -> u32 {
+    unsafe {
+        match GB.as_mut() {
+            Some(gb) => gb.step_instruction(),
+            None => 0,
+        }
+    }
+}
+
+macro_rules! reg_getter {
+    ($name:ident, $field:ident, $ty:ty) => {
+        #[no_mangle]
+        pub extern "C" fn $name() -> $ty {
+            unsafe {
+                match GB.as_ref() {
+                    Some(gb) => gb.cpu.$field as $ty,
+                    None => 0,
+                }
+            }
+        }
+    };
+}
+
+reg_getter!(reg_a, a, u32);
+reg_getter!(reg_f, f, u32);
+reg_getter!(reg_b, b, u32);
+reg_getter!(reg_c, c, u32);
+reg_getter!(reg_d, d, u32);
+reg_getter!(reg_e, e, u32);
+reg_getter!(reg_h, h, u32);
+reg_getter!(reg_l, l, u32);
+reg_getter!(reg_sp, sp, u32);
+reg_getter!(reg_pc, pc, u32);
+
+#[no_mangle]
+pub extern "C" fn reg_ime() -> u32 {
+    unsafe {
+        match GB.as_ref() {
+            Some(gb) => gb.cpu.ime as u32,
+            None => 0,
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn reg_halted() -> u32 {
+    unsafe {
+        match GB.as_ref() {
+            Some(gb) => gb.cpu.halted as u32,
+            None => 0,
+        }
+    }
+}
+
+/// Total elapsed T-cycles since ROM load, for a debugger cycle counter.
+static mut TOTAL_CYCLES: u64 = 0;
+
+#[no_mangle]
+pub extern "C" fn total_cycles_lo() -> u32 {
+    unsafe { TOTAL_CYCLES as u32 }
+}
+
+#[no_mangle]
+pub extern "C" fn total_cycles_hi() -> u32 {
+    unsafe { (TOTAL_CYCLES >> 32) as u32 }
+}
+
+#[no_mangle]
+pub extern "C" fn wram_ptr() -> *const u8 {
+    unsafe {
+        match GB.as_ref() {
+            Some(gb) => gb.mmu.wram.as_ptr(),
+            None => core::ptr::null(),
+        }
+    }
+}
+#[no_mangle]
+pub extern "C" fn wram_len() -> usize {
+    0x2000
+}
+
+#[no_mangle]
+pub extern "C" fn hram_ptr() -> *const u8 {
+    unsafe {
+        match GB.as_ref() {
+            Some(gb) => gb.mmu.hram.as_ptr(),
+            None => core::ptr::null(),
+        }
+    }
+}
+#[no_mangle]
+pub extern "C" fn hram_len() -> usize {
+    0x7F
+}
+
+#[no_mangle]
+pub extern "C" fn vram_ptr() -> *const u8 {
+    unsafe {
+        match GB.as_ref() {
+            Some(gb) => gb.mmu.ppu.vram.as_ptr(),
+            None => core::ptr::null(),
+        }
+    }
+}
+#[no_mangle]
+pub extern "C" fn vram_len() -> usize {
+    0x2000
+}
+
+#[no_mangle]
+pub extern "C" fn oam_ptr() -> *const u8 {
+    unsafe {
+        match GB.as_ref() {
+            Some(gb) => gb.mmu.ppu.oam.as_ptr(),
+            None => core::ptr::null(),
+        }
+    }
+}
+#[no_mangle]
+pub extern "C" fn oam_len() -> usize {
+    0xA0
 }
 
 #[cfg(test)]
