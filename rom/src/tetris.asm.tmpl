@@ -1,0 +1,1154 @@
+; Original falling-block puzzle cartridge for the webkernel Game Boy core.
+; Hand-assembled with rom/tools/gbasm.py (no external toolchain).
+
+; ---------------------------------------------------------------------------
+; Constants
+; ---------------------------------------------------------------------------
+BG_MAP EQU $9800
+FIELD_COLS EQU 10
+FIELD_ROWS EQU 16
+PIECE_TABLE_STRIDE EQU 32
+
+@@TILE_CONSTANTS@@
+
+; WRAM layout
+FIELD EQU $C000            ; 160 bytes: FIELD_ROWS x FIELD_COLS, 0=empty 1=locked
+PIECE_TYPE EQU $C0A0
+PIECE_ROT EQU $C0A1
+PIECE_X EQU $C0A2
+PIECE_Y EQU $C0A3
+PREV_X EQU $C0A4
+PREV_Y EQU $C0A5
+PREV_ROT EQU $C0A6
+NEXT_PIECE EQU $C0A7
+RNG_STATE EQU $C0A8
+GRAV_TIMER EQU $C0A9
+GRAV_SPEED EQU $C0AA
+INPUT_CUR EQU $C0AB
+INPUT_PREV EQU $C0AC
+INPUT_EDGE EQU $C0AD
+TMP_INPUT_NEW EQU $C0AE
+GAME_STATE EQU $C0AF
+TEST_X EQU $C0B0
+TEST_Y EQU $C0B1
+TEST_ROT EQU $C0B2
+COLLISION_FLAG EQU $C0B3
+WR_ROW EQU $C0B4
+RD_ROW EQU $C0B5
+CLR_COUNT EQU $C0B6
+CLR_ROW EQU $C0B7
+FLAG_FULL EQU $C0B8
+SCORE0 EQU $C0B9
+SCORE1 EQU $C0BA
+SCORE2 EQU $C0BB
+SCORE3 EQU $C0BC
+SCORE4 EQU $C0BD
+SCORE5 EQU $C0BE
+LINES0 EQU $C0BF
+LINES1 EQU $C0C0
+LINES2 EQU $C0C1
+TMP0 EQU $C0C2
+TMP1 EQU $C0C3
+TMP2 EQU $C0C4
+CELL_X EQU $C0C5
+CELL_IDX EQU $C0C6
+PTR_L EQU $C0C7
+PTR_H EQU $C0C8
+DRAW_TILE EQU $C0C9
+TMP_ROW EQU $C0CA
+LOOPCNT EQU $C0CB
+
+; ---------------------------------------------------------------------------
+; Interrupt vectors
+; ---------------------------------------------------------------------------
+ORG $40
+JP vblank_isr
+
+ORG $48
+RETI
+
+ORG $50
+RETI
+
+ORG $58
+RETI
+
+ORG $60
+RETI
+
+; ---------------------------------------------------------------------------
+; Header
+; ---------------------------------------------------------------------------
+ORG $100
+NOP
+JP start
+
+ORG $134
+DB "TETRIS"
+
+ORG $147
+DB $00
+DB $00
+DB $00
+
+; ---------------------------------------------------------------------------
+; Entry point
+; ---------------------------------------------------------------------------
+ORG $150
+start:
+  DI
+  LD SP, $FFFE
+  CALL init_ppu
+  CALL init_wram_state
+  CALL draw_static_ui
+  CALL show_press_start
+  LD A, $91
+  LDH ($40), A
+  XOR A
+  LDH ($0F), A
+  LD A, $01
+  LDH ($FF), A
+  EI
+
+main_loop:
+  HALT
+  NOP
+  CALL read_input
+  LD A, (GAME_STATE)
+  CP 1
+  JR Z, ml_playing
+  LD A, (INPUT_EDGE)
+  BIT 7, A
+  JR Z, main_loop
+  CALL start_game
+  JR main_loop
+ml_playing:
+  CALL erase_piece
+  CALL handle_input
+  CALL update_gravity
+  LD A, (GAME_STATE)
+  CP 1
+  JR NZ, main_loop
+  CALL draw_piece
+  CALL update_prev
+  CALL draw_score
+  JR main_loop
+
+vblank_isr:
+  RETI
+
+; ---------------------------------------------------------------------------
+; Input
+; ---------------------------------------------------------------------------
+read_input:
+  LD A, $20
+  LDH ($00), A
+  LDH A, ($00)
+  LDH A, ($00)
+  CPL
+  AND $0F
+  LD B, A
+  LD A, $10
+  LDH ($00), A
+  LDH A, ($00)
+  LDH A, ($00)
+  CPL
+  AND $0F
+  SWAP A
+  OR B
+  LD (TMP_INPUT_NEW), A
+
+  LD A, (INPUT_CUR)
+  LD (INPUT_PREV), A
+  LD A, (TMP_INPUT_NEW)
+  LD (INPUT_CUR), A
+
+  LD A, (INPUT_PREV)
+  CPL
+  LD B, A
+  LD A, (INPUT_CUR)
+  AND B
+  LD (INPUT_EDGE), A
+
+  LD A, $30
+  LDH ($00), A
+  RET
+
+handle_input:
+  LD A, (INPUT_EDGE)
+  BIT 1, A
+  CALL NZ, try_move_left
+  LD A, (INPUT_EDGE)
+  BIT 0, A
+  CALL NZ, try_move_right
+  LD A, (INPUT_EDGE)
+  BIT 4, A
+  CALL NZ, try_rotate
+  RET
+
+try_move_left:
+  LD A, (PIECE_X)
+  DEC A
+  LD (TEST_X), A
+  LD A, (PIECE_Y)
+  LD (TEST_Y), A
+  LD A, (PIECE_ROT)
+  LD (TEST_ROT), A
+  CALL check_collision
+  LD A, (COLLISION_FLAG)
+  OR A
+  RET NZ
+  LD A, (TEST_X)
+  LD (PIECE_X), A
+  RET
+
+try_move_right:
+  LD A, (PIECE_X)
+  INC A
+  LD (TEST_X), A
+  LD A, (PIECE_Y)
+  LD (TEST_Y), A
+  LD A, (PIECE_ROT)
+  LD (TEST_ROT), A
+  CALL check_collision
+  LD A, (COLLISION_FLAG)
+  OR A
+  RET NZ
+  LD A, (TEST_X)
+  LD (PIECE_X), A
+  RET
+
+try_rotate:
+  LD A, (PIECE_X)
+  LD (TEST_X), A
+  LD A, (PIECE_Y)
+  LD (TEST_Y), A
+  LD A, (PIECE_ROT)
+  INC A
+  AND 3
+  LD (TEST_ROT), A
+  CALL check_collision
+  LD A, (COLLISION_FLAG)
+  OR A
+  RET NZ
+  LD A, (TEST_ROT)
+  LD (PIECE_ROT), A
+  RET
+
+; ---------------------------------------------------------------------------
+; Gravity
+; ---------------------------------------------------------------------------
+update_gravity:
+  LD A, (GRAV_TIMER)
+  DEC A
+  LD (GRAV_TIMER), A
+  OR A
+  JR NZ, ug_done
+
+  LD A, (INPUT_CUR)
+  BIT 3, A
+  JR Z, ug_use_normal
+  LD A, 3
+  JR ug_reset_timer
+ug_use_normal:
+  LD A, (GRAV_SPEED)
+ug_reset_timer:
+  LD (GRAV_TIMER), A
+
+  LD A, (PIECE_X)
+  LD (TEST_X), A
+  LD A, (PIECE_Y)
+  INC A
+  LD (TEST_Y), A
+  LD A, (PIECE_ROT)
+  LD (TEST_ROT), A
+  CALL check_collision
+  LD A, (COLLISION_FLAG)
+  OR A
+  JR NZ, ug_lock
+  LD A, (TEST_Y)
+  LD (PIECE_Y), A
+  JR ug_done
+ug_lock:
+  CALL lock_piece
+  CALL clear_lines
+  CALL spawn_piece
+ug_done:
+  RET
+
+; ---------------------------------------------------------------------------
+; Piece table / geometry helpers
+; ---------------------------------------------------------------------------
+compute_table_ptr:
+  LD A, (PIECE_TYPE)
+  LD B, A
+  LD A, B
+  SLA A
+  SLA A
+  SLA A
+  SLA A
+  SLA A
+  LD C, A
+  LD A, (TEST_ROT)
+  SLA A
+  SLA A
+  SLA A
+  ADD A, C
+  LD L, A
+  LD H, 0
+  LD BC, PIECE_TABLE
+  ADD HL, BC
+  LD A, L
+  LD (PTR_L), A
+  LD A, H
+  LD (PTR_H), A
+  RET
+
+row_base_addr:
+  LD B, A
+  ADD A, A
+  LD C, A
+  LD A, B
+  ADD A, A
+  ADD A, A
+  ADD A, A
+  ADD A, C
+  LD L, A
+  LD H, 0
+  LD BC, FIELD
+  ADD HL, BC
+  RET
+
+field_addr:
+  CALL row_base_addr
+  LD A, (CELL_X)
+  LD C, A
+  LD B, 0
+  ADD HL, BC
+  RET
+
+vram_addr:
+  ADD A, 1
+  LD L, A
+  LD H, 0
+  ADD HL, HL
+  ADD HL, HL
+  ADD HL, HL
+  ADD HL, HL
+  ADD HL, HL
+  LD A, (CELL_X)
+  LD C, A
+  LD B, 0
+  ADD HL, BC
+  LD BC, BG_MAP
+  ADD HL, BC
+  RET
+
+vram_addr_abs:
+  LD L, A
+  LD H, 0
+  ADD HL, HL
+  ADD HL, HL
+  ADD HL, HL
+  ADD HL, HL
+  ADD HL, HL
+  LD A, (CELL_X)
+  LD C, A
+  LD B, 0
+  ADD HL, BC
+  LD BC, BG_MAP
+  ADD HL, BC
+  RET
+
+draw_cell:
+  CALL vram_addr
+  LD A, (DRAW_TILE)
+  LD (HL), A
+  RET
+
+draw_cell_abs:
+  CALL vram_addr_abs
+  LD A, (DRAW_TILE)
+  LD (HL), A
+  RET
+
+; ---------------------------------------------------------------------------
+; Collision / piece placement
+; ---------------------------------------------------------------------------
+check_collision:
+  XOR A
+  LD (COLLISION_FLAG), A
+  CALL compute_table_ptr
+  XOR A
+  LD (CELL_IDX), A
+cc_loop:
+  LD A, (PTR_L)
+  LD L, A
+  LD A, (PTR_H)
+  LD H, A
+  LD A, (HL)
+  LD (TMP0), A
+  INC HL
+  LD A, (HL)
+  LD (TMP1), A
+  INC HL
+  LD A, L
+  LD (PTR_L), A
+  LD A, H
+  LD (PTR_H), A
+
+  LD A, (TEST_X)
+  LD B, A
+  LD A, (TMP0)
+  ADD A, B
+  LD (CELL_X), A
+  CP FIELD_COLS
+  JR NC, cc_blocked
+
+  LD A, (TEST_Y)
+  LD B, A
+  LD A, (TMP1)
+  ADD A, B
+  LD (TMP2), A
+  CP FIELD_ROWS
+  JR NC, cc_blocked
+
+  LD A, (TMP2)
+  CALL field_addr
+  LD A, (HL)
+  OR A
+  JR NZ, cc_blocked
+
+  LD A, (CELL_IDX)
+  INC A
+  LD (CELL_IDX), A
+  CP 4
+  JR NZ, cc_loop
+  RET
+cc_blocked:
+  LD A, 1
+  LD (COLLISION_FLAG), A
+  RET
+
+plot_piece_cells:
+  XOR A
+  LD (CELL_IDX), A
+ppc_loop:
+  LD A, (PTR_L)
+  LD L, A
+  LD A, (PTR_H)
+  LD H, A
+  LD A, (HL)
+  LD (TMP0), A
+  INC HL
+  LD A, (HL)
+  LD (TMP1), A
+  INC HL
+  LD A, L
+  LD (PTR_L), A
+  LD A, H
+  LD (PTR_H), A
+
+  LD A, (TEST_X)
+  LD B, A
+  LD A, (TMP0)
+  ADD A, B
+  LD (CELL_X), A
+
+  LD A, (TEST_Y)
+  LD B, A
+  LD A, (TMP1)
+  ADD A, B
+  CALL draw_cell
+
+  LD A, (CELL_IDX)
+  INC A
+  LD (CELL_IDX), A
+  CP 4
+  JR NZ, ppc_loop
+  RET
+
+erase_piece:
+  LD A, TILE_BLANK
+  LD (DRAW_TILE), A
+  LD A, (PREV_ROT)
+  LD (TEST_ROT), A
+  CALL compute_table_ptr
+  LD A, (PREV_X)
+  LD (TEST_X), A
+  LD A, (PREV_Y)
+  LD (TEST_Y), A
+  CALL plot_piece_cells
+  RET
+
+draw_piece:
+  LD A, TILE_ACTIVE
+  LD (DRAW_TILE), A
+  LD A, (PIECE_ROT)
+  LD (TEST_ROT), A
+  CALL compute_table_ptr
+  LD A, (PIECE_X)
+  LD (TEST_X), A
+  LD A, (PIECE_Y)
+  LD (TEST_Y), A
+  CALL plot_piece_cells
+  RET
+
+update_prev:
+  LD A, (PIECE_X)
+  LD (PREV_X), A
+  LD A, (PIECE_Y)
+  LD (PREV_Y), A
+  LD A, (PIECE_ROT)
+  LD (PREV_ROT), A
+  RET
+
+lock_piece:
+  LD A, (PIECE_ROT)
+  LD (TEST_ROT), A
+  CALL compute_table_ptr
+  LD A, (PIECE_X)
+  LD (TEST_X), A
+  LD A, (PIECE_Y)
+  LD (TEST_Y), A
+  XOR A
+  LD (CELL_IDX), A
+lp_loop:
+  LD A, (PTR_L)
+  LD L, A
+  LD A, (PTR_H)
+  LD H, A
+  LD A, (HL)
+  LD (TMP0), A
+  INC HL
+  LD A, (HL)
+  LD (TMP1), A
+  INC HL
+  LD A, L
+  LD (PTR_L), A
+  LD A, H
+  LD (PTR_H), A
+
+  LD A, (TEST_X)
+  LD B, A
+  LD A, (TMP0)
+  ADD A, B
+  LD (CELL_X), A
+
+  LD A, (TEST_Y)
+  LD B, A
+  LD A, (TMP1)
+  ADD A, B
+  LD (TMP2), A
+
+  CALL field_addr
+  LD A, 1
+  LD (HL), A
+
+  LD A, TILE_LOCKED
+  LD (DRAW_TILE), A
+  LD A, (TMP2)
+  CALL draw_cell
+
+  LD A, (CELL_IDX)
+  INC A
+  LD (CELL_IDX), A
+  CP 4
+  JR NZ, lp_loop
+  RET
+
+; ---------------------------------------------------------------------------
+; Random / spawn
+; ---------------------------------------------------------------------------
+next_random:
+  LDH A, ($04)
+  LD B, A
+  LD A, (RNG_STATE)
+  XOR B
+  LD C, A
+  SRL A
+  JR NC, nr_skip
+  XOR $B4
+nr_skip:
+  XOR C
+  LD (RNG_STATE), A
+  LD B, A
+nr_mod:
+  LD A, B
+  CP 7
+  JR C, nr_done
+  SUB 7
+  LD B, A
+  JR nr_mod
+nr_done:
+  LD A, B
+  RET
+
+spawn_piece:
+  LD A, (NEXT_PIECE)
+  LD (PIECE_TYPE), A
+  CALL next_random
+  LD (NEXT_PIECE), A
+  XOR A
+  LD (PIECE_ROT), A
+  LD A, 3
+  LD (PIECE_X), A
+  XOR A
+  LD (PIECE_Y), A
+
+  LD A, (PIECE_X)
+  LD (TEST_X), A
+  LD A, (PIECE_Y)
+  LD (TEST_Y), A
+  LD A, (PIECE_ROT)
+  LD (TEST_ROT), A
+  CALL check_collision
+  LD A, (COLLISION_FLAG)
+  CP 1
+  JR NZ, sp_ok
+  LD A, 2
+  LD (GAME_STATE), A
+  CALL show_game_over
+sp_ok:
+  RET
+
+; ---------------------------------------------------------------------------
+; Line clearing
+; ---------------------------------------------------------------------------
+row_is_full:
+  CALL row_base_addr
+  LD B, 10
+ris_loop:
+  LD A, (HL)
+  OR A
+  JR Z, ris_not_full
+  INC HL
+  DEC B
+  JR NZ, ris_loop
+  LD A, 1
+  LD (FLAG_FULL), A
+  RET
+ris_not_full:
+  XOR A
+  LD (FLAG_FULL), A
+  RET
+
+copy_row:
+  LD A, (RD_ROW)
+  CALL row_base_addr
+  LD A, L
+  LD (TMP0), A
+  LD A, H
+  LD (TMP1), A
+  LD A, (WR_ROW)
+  CALL row_base_addr
+  LD D, H
+  LD E, L
+  LD A, (TMP0)
+  LD L, A
+  LD A, (TMP1)
+  LD H, A
+  LD B, 10
+cr_loop:
+  LD A, (HL)
+  LD (DE), A
+  INC HL
+  INC DE
+  DEC B
+  JR NZ, cr_loop
+  RET
+
+clear_row_mem:
+  CALL row_base_addr
+  LD B, 10
+  XOR A
+crm_loop:
+  LD (HL), A
+  INC HL
+  DEC B
+  JR NZ, crm_loop
+  RET
+
+clear_lines:
+  LD A, 15
+  LD (WR_ROW), A
+  LD A, 15
+  LD (RD_ROW), A
+  XOR A
+  LD (CLR_COUNT), A
+  LD A, 16
+  LD (LOOPCNT), A
+cl_loop:
+  LD A, (RD_ROW)
+  CALL row_is_full
+  LD A, (FLAG_FULL)
+  CP 1
+  JR Z, cl_full
+  CALL copy_row
+  LD A, (WR_ROW)
+  DEC A
+  LD (WR_ROW), A
+  JR cl_next
+cl_full:
+  LD A, (CLR_COUNT)
+  INC A
+  LD (CLR_COUNT), A
+cl_next:
+  LD A, (RD_ROW)
+  DEC A
+  LD (RD_ROW), A
+  LD A, (LOOPCNT)
+  DEC A
+  LD (LOOPCNT), A
+  JR NZ, cl_loop
+
+  LD A, (WR_ROW)
+  INC A
+  LD (LOOPCNT), A
+  OR A
+  JR Z, cl_done_clear
+  XOR A
+  LD (CLR_ROW), A
+cl_clear_loop:
+  LD A, (CLR_ROW)
+  CALL clear_row_mem
+  LD A, (CLR_ROW)
+  INC A
+  LD (CLR_ROW), A
+  LD A, (LOOPCNT)
+  DEC A
+  LD (LOOPCNT), A
+  JR NZ, cl_clear_loop
+cl_done_clear:
+
+  LD A, (CLR_COUNT)
+  OR A
+  JR Z, cl_end
+  CALL redraw_playfield
+  CALL add_score_for_lines
+cl_end:
+  RET
+
+redraw_playfield:
+  XOR A
+  LD (CLR_ROW), A
+rp_row_loop:
+  XOR A
+  LD (CELL_X), A
+rp_col_loop:
+  LD A, (CLR_ROW)
+  LD (TMP2), A
+  CALL row_base_addr
+  LD A, (CELL_X)
+  LD C, A
+  LD B, 0
+  ADD HL, BC
+  LD A, (HL)
+  OR A
+  JR Z, rp_blank
+  LD A, TILE_LOCKED
+  JR rp_have_tile
+rp_blank:
+  LD A, TILE_BLANK
+rp_have_tile:
+  LD (DRAW_TILE), A
+  LD A, (TMP2)
+  CALL draw_cell
+  LD A, (CELL_X)
+  INC A
+  LD (CELL_X), A
+  CP 10
+  JR NZ, rp_col_loop
+  LD A, (CLR_ROW)
+  INC A
+  LD (CLR_ROW), A
+  CP 16
+  JR NZ, rp_row_loop
+  RET
+
+; ---------------------------------------------------------------------------
+; Score / lines (decimal digit arrays, most-significant digit first)
+; ---------------------------------------------------------------------------
+increment_score:
+  LD HL, SCORE5
+  LD B, 6
+is_loop:
+  LD A, (HL)
+  INC A
+  CP 10
+  JR C, is_done
+  XOR A
+  LD (HL), A
+  DEC HL
+  DEC B
+  JR NZ, is_loop
+  RET
+is_done:
+  LD (HL), A
+  RET
+
+increment_lines:
+  LD HL, LINES2
+  LD B, 3
+il_loop:
+  LD A, (HL)
+  INC A
+  CP 10
+  JR C, il_done
+  XOR A
+  LD (HL), A
+  DEC HL
+  DEC B
+  JR NZ, il_loop
+  RET
+il_done:
+  LD (HL), A
+  RET
+
+add_score_n:
+asn_loop:
+  LD A, H
+  OR L
+  JR Z, asn_done
+  PUSH HL
+  CALL increment_score
+  POP HL
+  DEC HL
+  JR asn_loop
+asn_done:
+  RET
+
+add_score_for_lines:
+  LD A, (CLR_COUNT)
+  CP 1
+  JR Z, asfl_1
+  CP 2
+  JR Z, asfl_2
+  CP 3
+  JR Z, asfl_3
+  LD HL, 1200
+  JR asfl_have
+asfl_1:
+  LD HL, 40
+  JR asfl_have
+asfl_2:
+  LD HL, 100
+  JR asfl_have
+asfl_3:
+  LD HL, 300
+asfl_have:
+  CALL add_score_n
+
+  LD A, (CLR_COUNT)
+  LD B, A
+asfl_lines_loop:
+  LD A, B
+  OR A
+  JR Z, asfl_lines_done
+  PUSH BC
+  CALL increment_lines
+  POP BC
+  DEC B
+  JR NZ, asfl_lines_loop
+asfl_lines_done:
+
+  LD A, (CLR_COUNT)
+  LD B, A
+asfl_speed_loop:
+  LD A, B
+  OR A
+  JR Z, asfl_speed_done
+  LD A, (GRAV_SPEED)
+  CP 11
+  JR C, asfl_speed_skip
+  DEC A
+  LD (GRAV_SPEED), A
+asfl_speed_skip:
+  DEC B
+  JR NZ, asfl_speed_loop
+asfl_speed_done:
+  RET
+
+; ---------------------------------------------------------------------------
+; UI drawing
+; ---------------------------------------------------------------------------
+draw_string:
+  LD (TMP_ROW), A
+ds2_loop:
+  LD A, (HL)
+  PUSH HL
+  PUSH BC
+  LD (DRAW_TILE), A
+  LD A, (TMP_ROW)
+  CALL draw_cell_abs
+  POP BC
+  POP HL
+  INC HL
+  LD A, (CELL_X)
+  INC A
+  LD (CELL_X), A
+  DEC B
+  JR NZ, ds2_loop
+  RET
+
+draw_static_ui:
+  LD C, 0
+dsu_h_loop:
+  LD A, C
+  LD (CELL_X), A
+  LD A, TILE_BORDER
+  LD (DRAW_TILE), A
+  PUSH BC
+  LD A, 0
+  CALL draw_cell_abs
+  LD A, 17
+  CALL draw_cell_abs
+  POP BC
+  INC C
+  LD A, C
+  CP 12
+  JR NZ, dsu_h_loop
+
+  LD C, 1
+dsu_v_loop:
+  PUSH BC
+  LD A, TILE_BORDER
+  LD (DRAW_TILE), A
+  LD A, 0
+  LD (CELL_X), A
+  LD A, C
+  CALL draw_cell_abs
+  LD A, 11
+  LD (CELL_X), A
+  LD A, C
+  CALL draw_cell_abs
+  POP BC
+  INC C
+  LD A, C
+  CP 17
+  JR NZ, dsu_v_loop
+
+  LD A, 13
+  LD (CELL_X), A
+  LD HL, STR_TETRIS
+  LD B, 6
+  LD A, 1
+  CALL draw_string
+
+  LD A, 13
+  LD (CELL_X), A
+  LD HL, STR_SCORE
+  LD B, 5
+  LD A, 2
+  CALL draw_string
+
+  LD A, 13
+  LD (CELL_X), A
+  LD HL, STR_LINES
+  LD B, 5
+  LD A, 5
+  CALL draw_string
+  RET
+
+show_press_start:
+  LD A, 3
+  LD (CELL_X), A
+  LD HL, STR_PRESS
+  LD B, 5
+  LD A, 8
+  CALL draw_string
+
+  LD A, 3
+  LD (CELL_X), A
+  LD HL, STR_START
+  LD B, 5
+  LD A, 9
+  CALL draw_string
+  RET
+
+show_game_over:
+  LD A, 3
+  LD (CELL_X), A
+  LD HL, STR_GAME
+  LD B, 4
+  LD A, 6
+  CALL draw_string
+
+  LD A, 3
+  LD (CELL_X), A
+  LD HL, STR_OVER
+  LD B, 4
+  LD A, 7
+  CALL draw_string
+
+  LD A, 3
+  LD (CELL_X), A
+  LD HL, STR_PRESS
+  LD B, 5
+  LD A, 9
+  CALL draw_string
+
+  LD A, 3
+  LD (CELL_X), A
+  LD HL, STR_START
+  LD B, 5
+  LD A, 10
+  CALL draw_string
+  RET
+
+draw_score:
+  LD A, 13
+  LD (CELL_X), A
+  LD HL, SCORE0
+  LD B, 6
+ds_loop:
+  LD A, (HL)
+  PUSH HL
+  PUSH BC
+  ADD A, TILE_DIGIT0
+  LD (DRAW_TILE), A
+  LD A, 3
+  CALL draw_cell_abs
+  POP BC
+  POP HL
+  INC HL
+  LD A, (CELL_X)
+  INC A
+  LD (CELL_X), A
+  DEC B
+  JR NZ, ds_loop
+
+  LD A, 13
+  LD (CELL_X), A
+  LD HL, LINES0
+  LD B, 3
+dl_loop:
+  LD A, (HL)
+  PUSH HL
+  PUSH BC
+  ADD A, TILE_DIGIT0
+  LD (DRAW_TILE), A
+  LD A, 6
+  CALL draw_cell_abs
+  POP BC
+  POP HL
+  INC HL
+  LD A, (CELL_X)
+  INC A
+  LD (CELL_X), A
+  DEC B
+  JR NZ, dl_loop
+  RET
+
+; ---------------------------------------------------------------------------
+; Init / game (re)start
+; ---------------------------------------------------------------------------
+copy_tiles:
+  LD HL, $8000
+  LD DE, TILE_DATA
+  LD BC, 448
+ct_loop:
+  LD A, (DE)
+  LD (HL), A
+  INC HL
+  INC DE
+  DEC BC
+  LD A, B
+  OR C
+  JR NZ, ct_loop
+  RET
+
+init_ppu:
+  XOR A
+  LDH ($40), A
+  CALL copy_tiles
+  LD A, $E4
+  LDH ($47), A
+  RET
+
+clear_field_all:
+  LD HL, FIELD
+  LD BC, 160
+cfa_loop:
+  XOR A
+  LD (HL), A
+  INC HL
+  DEC BC
+  LD A, B
+  OR C
+  JR NZ, cfa_loop
+  RET
+
+reset_score_and_lines:
+  LD HL, SCORE0
+  LD B, 6
+  XOR A
+rsl_loop1:
+  LD (HL), A
+  INC HL
+  DEC B
+  JR NZ, rsl_loop1
+  LD HL, LINES0
+  LD B, 3
+  XOR A
+rsl_loop2:
+  LD (HL), A
+  INC HL
+  DEC B
+  JR NZ, rsl_loop2
+  RET
+
+init_wram_state:
+  XOR A
+  LD (GAME_STATE), A
+  CALL clear_field_all
+  CALL reset_score_and_lines
+  LD A, $DD
+  LD (RNG_STATE), A
+  CALL next_random
+  LD (NEXT_PIECE), A
+  RET
+
+start_game:
+  CALL clear_field_all
+  CALL reset_score_and_lines
+  CALL redraw_playfield
+  LD A, 45
+  LD (GRAV_SPEED), A
+  LD A, 45
+  LD (GRAV_TIMER), A
+  CALL spawn_piece
+  LD A, (GAME_STATE)
+  CP 2
+  JR Z, sg_done
+  LD A, 1
+  LD (GAME_STATE), A
+  CALL draw_piece
+  CALL update_prev
+  CALL draw_score
+sg_done:
+  RET
+
+; ---------------------------------------------------------------------------
+; Data
+; ---------------------------------------------------------------------------
+STR_TETRIS:
+DB @@STR_TETRIS@@
+STR_SCORE:
+DB @@STR_SCORE@@
+STR_LINES:
+DB @@STR_LINES@@
+STR_GAME:
+DB @@STR_GAME@@
+STR_OVER:
+DB @@STR_OVER@@
+STR_PRESS:
+DB @@STR_PRESS@@
+STR_START:
+DB @@STR_START@@
+
+PIECE_TABLE:
+@@PIECE_TABLE@@
+
+TILE_DATA:
+@@TILE_DATA@@

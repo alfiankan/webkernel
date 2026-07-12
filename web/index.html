@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Pixel Pocket &mdash; Web Game Boy Emulator</title>
+<link rel="icon" href="data:," />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="page">
+    <div class="device" id="device">
+      <div class="top-row">
+        <div class="power-led-row">
+          <span class="power-label">POWER</span>
+          <span class="power-led" id="powerLed"></span>
+        </div>
+      </div>
+
+      <div class="screen-bezel">
+        <div class="screen-inner">
+          <canvas id="screen" width="160" height="144"></canvas>
+          <div class="screen-overlay" id="screenOverlay"></div>
+        </div>
+        <div class="bezel-brand">
+          <span class="brand-name">PIXEL POCKET</span>
+          <span class="brand-sub">DOT MATRIX WITH STEREO SOUND</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="dpad-area">
+          <div class="dpad" id="dpad">
+            <button class="dpad-btn dpad-up" data-btn="up" aria-label="Up"></button>
+            <button class="dpad-btn dpad-down" data-btn="down" aria-label="Down"></button>
+            <button class="dpad-btn dpad-left" data-btn="left" aria-label="Left"></button>
+            <button class="dpad-btn dpad-right" data-btn="right" aria-label="Right"></button>
+            <div class="dpad-center"></div>
+          </div>
+        </div>
+
+        <div class="ab-area">
+          <div class="ab-buttons">
+            <button class="round-btn btn-b" data-btn="b" aria-label="B">B</button>
+            <button class="round-btn btn-a" data-btn="a" aria-label="A">A</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta-row">
+        <div class="select-start">
+          <button class="pill-btn" data-btn="select" aria-label="Select">SELECT</button>
+          <button class="pill-btn" data-btn="start" aria-label="Start">START</button>
+        </div>
+      </div>
+
+      <div class="speaker-grille" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <h1>Pixel Pocket</h1>
+      <p class="subtitle">A Game Boy emulator engine compiled to WebAssembly, with an original falling-block cartridge.</p>
+
+      <div class="panel-row">
+        <button id="btnPauseResume" class="ui-btn">Pause</button>
+        <button id="btnReset" class="ui-btn">Reset</button>
+        <button id="btnMute" class="ui-btn">Mute</button>
+      </div>
+
+      <div class="panel-row">
+        <label class="file-label" for="romInput">Load .gb cartridge
+          <input type="file" id="romInput" accept=".gb,.gbc" />
+        </label>
+      </div>
+
+      <div class="keymap">
+        <h2>Controls</h2>
+        <ul>
+          <li><span>Arrow keys</span><span>D-Pad</span></li>
+          <li><span>Z</span><span>B</span></li>
+          <li><span>X</span><span>A</span></li>
+          <li><span>Enter</span><span>Start</span></li>
+          <li><span>Shift</span><span>Select</span></li>
+        </ul>
+        <p class="hint">Or use the on-screen buttons — touch and mouse both work.</p>
+      </div>
+
+      <div class="status" id="status">Loading emulator&hellip;</div>
+    </div>
+  </div>
+
+  <script src="main.js"></script>
+</body>
+</html>

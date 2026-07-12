@@ -1,14 +1,23 @@
 target/
 dist/
-pkg/
 node_modules/
-*.wasm
 .DS_Store
 *.log
 .env
 .env.local
 
+# The web app ships a pre-built copy of the emulator core and cartridge, so
+# don't ignore web/pkg or web/roms even though other *.wasm/pkg output is.
+*.wasm
+!web/pkg/*.wasm
+pkg/
+!web/pkg/
+
+# Assembler intermediate build artifact
+rom/_tetris_final.asm
 
 # Added by cargo
 
 /target
+__pycache__/
+*.pyc
